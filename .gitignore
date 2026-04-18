@@ -1,0 +1,11 @@
+# Build artifacts
+/build/
+*.obj
+*.exe
+*.log
+*.pdb
+*.vcxproj*
+*.sln
+*.user
+*.ipch
+*.cache
