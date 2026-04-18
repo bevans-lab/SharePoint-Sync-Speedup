@@ -1,11 +1,33 @@
-# Build artifacts
-/build/
-*.obj
-*.exe
-*.log
-*.pdb
+# Build output
+build/
+out/
+cmake-build-*/
+
+# IDE files
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
 *.vcxproj*
 *.sln
-*.user
+
+# Compiled binaries
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.dll
+*.exp
+*.log
 *.ipch
 *.cache
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IntuneWin packaging output
+*.intunewin
