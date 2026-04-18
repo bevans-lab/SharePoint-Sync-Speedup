@@ -128,18 +128,29 @@ static int Install()
         return 1;
 
     // 3. Create scheduled task (at logon, user context)
-    //    Uses schtasks.exe — available on all supported Windows versions.
-    std::wstring schtasksCreate =
-        L"schtasks.exe /Create /F"
-        L" /TN \"" + std::wstring(TASK_NAME) + L"\""
-        L" /TR \"powershell.exe -WindowStyle Hidden -NonInteractive"
-            L" -ExecutionPolicy Bypass"
-            L" -File \\\"" + scriptPath.wstring() + L"\\\"\""
-        L" /SC ONLOGON"
-        L" /RL LIMITED"
-        L" /IT";
+    //    Uses Register-ScheduledTask — works in user context without elevation.
+    //    The -AtLogOn trigger fires for the current user at every interactive logon.
+    std::wstring registerTask =
+        L"powershell.exe -WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -Command \""
+        L"$action = New-ScheduledTaskAction"
+            L" -Execute 'powershell.exe'"
+            L" -Argument '-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass"
+                L" -File \\\"" + scriptPath.wstring() + L"\\\"';"
+        L" $trigger = New-ScheduledTaskTrigger -AtLogOn;"
+        L" $settings = New-ScheduledTaskSettingsSet"
+            L" -Hidden"
+            L" -AllowStartIfOnBatteries"
+            L" -DontStopIfGoingOnBatteries"
+            L" -ExecutionTimeLimit (New-TimeSpan -Minutes 5);"
+        L" Register-ScheduledTask"
+            L" -TaskName '" + std::wstring(TASK_NAME) + L"'"
+            L" -Action $action"
+            L" -Trigger $trigger"
+            L" -Settings $settings"
+            L" -Force"
+        L"\"";
 
-    DWORD taskResult = RunHidden(schtasksCreate);
+    DWORD taskResult = RunHidden(registerTask);
     if (taskResult != 0)
         return 1;
 
@@ -158,9 +169,12 @@ static int Install()
 static int Uninstall()
 {
     // 1. Delete the scheduled task (ignore errors if already gone)
-    std::wstring schtasksDelete =
-        L"schtasks.exe /Delete /F /TN \"" + std::wstring(TASK_NAME) + L"\"";
-    RunHidden(schtasksDelete);
+    std::wstring unregisterTask =
+        L"powershell.exe -WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -Command \""
+        L"Unregister-ScheduledTask -TaskName '" + std::wstring(TASK_NAME) + L"'"
+        L" -Confirm:$false -ErrorAction SilentlyContinue"
+        L"\"";
+    RunHidden(unregisterTask);
 
     // 2. Remove app directory
     fs::path appDir = GetAppDir();
