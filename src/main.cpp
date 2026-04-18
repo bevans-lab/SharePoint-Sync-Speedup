@@ -42,7 +42,12 @@ exit 0
 
 static const wchar_t* const APP_DIR_NAME   = L"SharePointSyncSpeedup";
 static const wchar_t* const SCRIPT_NAME    = L"sharepointspeedup.ps1";
+static const wchar_t* const EXE_NAME       = L"SharePointSyncSpeedup.exe";
 static const wchar_t* const TASK_NAME      = L"SharePointSyncSpeedup";
+static const wchar_t* const ARP_KEY        = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\SharePointSyncSpeedup";
+static const wchar_t* const DISPLAY_NAME   = L"SharePoint Sync Speedup";
+static const wchar_t* const PUBLISHER      = L"bevans-lab";
+static const wchar_t* const APP_VERSION    = L"1.0.0";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -127,7 +132,40 @@ static int Install()
     if (!ok || written != len)
         return 1;
 
-    // 3. Create scheduled task (at logon, user context)
+    // 3. Copy the running exe into the app directory for uninstall support
+    fs::path installedExe = appDir / EXE_NAME;
+    {
+        wchar_t selfPath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, selfPath, MAX_PATH);
+        std::error_code cpEc;
+        fs::copy_file(selfPath, installedExe,
+                      fs::copy_options::overwrite_existing, cpEc);
+        // Non-fatal: Intune manages uninstall itself, so the exe copy
+        // is only needed for local Apps & Features uninstall.
+    }
+
+    // 4. Write Add/Remove Programs (ARP) registry entry
+    {
+        HKEY hKey = nullptr;
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, ARP_KEY, 0, nullptr,
+                            0, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS)
+        {
+            std::wstring uninstallCmd = L"\"" + installedExe.wstring() + L"\" /uninstall";
+
+            RegSetValueExW(hKey, L"DisplayName",     0, REG_SZ, reinterpret_cast<const BYTE*>(DISPLAY_NAME),   static_cast<DWORD>((wcslen(DISPLAY_NAME)   + 1) * sizeof(wchar_t)));
+            RegSetValueExW(hKey, L"UninstallString", 0, REG_SZ, reinterpret_cast<const BYTE*>(uninstallCmd.c_str()), static_cast<DWORD>((uninstallCmd.size() + 1) * sizeof(wchar_t)));
+            RegSetValueExW(hKey, L"InstallLocation", 0, REG_SZ, reinterpret_cast<const BYTE*>(appDir.c_str()),  static_cast<DWORD>((appDir.wstring().size() + 1) * sizeof(wchar_t)));
+            RegSetValueExW(hKey, L"Publisher",       0, REG_SZ, reinterpret_cast<const BYTE*>(PUBLISHER),       static_cast<DWORD>((wcslen(PUBLISHER)       + 1) * sizeof(wchar_t)));
+            RegSetValueExW(hKey, L"DisplayVersion",  0, REG_SZ, reinterpret_cast<const BYTE*>(APP_VERSION),     static_cast<DWORD>((wcslen(APP_VERSION)     + 1) * sizeof(wchar_t)));
+            DWORD noModify = 1;
+            RegSetValueExW(hKey, L"NoModify",  0, REG_DWORD, reinterpret_cast<const BYTE*>(&noModify), sizeof(DWORD));
+            RegSetValueExW(hKey, L"NoRepair",  0, REG_DWORD, reinterpret_cast<const BYTE*>(&noModify), sizeof(DWORD));
+
+            RegCloseKey(hKey);
+        }
+    }
+
+    // 5. Create scheduled task (at logon, user context)
     //    Uses Register-ScheduledTask — works in user context without elevation.
     //    The -AtLogOn trigger fires for the current user at every interactive logon.
     std::wstring registerTask =
@@ -154,7 +192,7 @@ static int Install()
     if (taskResult != 0)
         return 1;
 
-    // 4. Run the script once immediately for instant effect
+    // 6. Run the script once immediately for instant effect
     std::wstring runNow =
         L"powershell.exe -WindowStyle Hidden -NonInteractive"
         L" -ExecutionPolicy Bypass"
@@ -176,12 +214,30 @@ static int Uninstall()
         L"\"";
     RunHidden(unregisterTask);
 
-    // 2. Remove app directory
+    // 2. Remove ARP registry entry
+    RegDeleteKeyW(HKEY_CURRENT_USER, ARP_KEY);
+
+    // 3. Remove app directory (script + exe copy)
+    //    The running exe may be inside this directory, so schedule deletion
+    //    of the exe via MoveFileEx if direct removal fails.
     fs::path appDir = GetAppDir();
     if (!appDir.empty())
     {
+        // Try to delete everything except our own exe first
         std::error_code ec;
-        fs::remove_all(appDir, ec);
+        fs::path selfExe = appDir / EXE_NAME;
+        for (auto& entry : fs::directory_iterator(appDir, ec))
+        {
+            if (entry.path() != selfExe)
+                fs::remove(entry.path(), ec);
+        }
+
+        // Try removing the exe and directory; if locked, schedule for reboot
+        if (!fs::remove(selfExe, ec))
+            MoveFileExW(selfExe.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+
+        if (!fs::remove(appDir, ec))
+            MoveFileExW(appDir.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
     }
 
     return 0;
