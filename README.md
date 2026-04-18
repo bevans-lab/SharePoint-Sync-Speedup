@@ -33,12 +33,21 @@ The output binary is `build\Release\SharePointSyncSpeedup.exe` (MSVC) or `build\
 ## Usage
 
 ```powershell
-# Install (creates script + scheduled task + runs immediately)
+# Local install (shows confirmation dialog)
 SharePointSyncSpeedup.exe
 
-# Uninstall (removes scheduled task + script directory)
+# Silent install (for Intune or scripted deployment)
+SharePointSyncSpeedup.exe /quiet
+
+# Uninstall (always silent)
 SharePointSyncSpeedup.exe /uninstall
 ```
+
+| Flag | Behavior |
+|------|----------|
+| *(none)* | Interactive — shows install confirmation and result dialogs |
+| `/quiet` or `/silent` | Fully silent — no UI, for Intune/automated deployment |
+| `/uninstall` | Removes scheduled task, script, ARP entry, and app directory |
 
 ## Intune Deployment
 
@@ -48,7 +57,7 @@ See [docs/INTUNE_DEPLOYMENT.md](docs/INTUNE_DEPLOYMENT.md) for complete packagin
 
 | Setting | Value |
 |---------|-------|
-| Install command | `SharePointSyncSpeedup.exe` |
+| Install command | `SharePointSyncSpeedup.exe /quiet` |
 | Uninstall command | `SharePointSyncSpeedup.exe /uninstall` |
 | Install behavior | User |
 | Detection rule | File exists: `%LOCALAPPDATA%\SharePointSyncSpeedup\sharepointspeedup.ps1` |

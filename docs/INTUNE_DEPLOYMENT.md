@@ -35,7 +35,7 @@ In the Microsoft Intune admin center, create a new **Windows app (Win32)**:
 ### Program
 | Field | Value |
 |-------|-------|
-| Install command | `SharePointSyncSpeedup.exe` |
+| Install command | `SharePointSyncSpeedup.exe /quiet` |
 | Uninstall command | `SharePointSyncSpeedup.exe /uninstall` |
 | Install behavior | **User** |
 | Device restart behavior | No specific action |

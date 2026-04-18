@@ -243,6 +243,15 @@ static int Uninstall()
     return 0;
 }
 
+// ── Case-insensitive substring search ────────────────────────────────────────
+static bool ContainsCI(const std::wstring& haystack, const wchar_t* needle)
+{
+    std::wstring h = haystack, n = needle;
+    CharLowerBuffW(h.data(), static_cast<DWORD>(h.size()));
+    CharLowerBuffW(n.data(), static_cast<DWORD>(n.size()));
+    return h.find(n) != std::wstring::npos;
+}
+
 // ── Entry point (Win32 GUI subsystem) ───────────────────────────────────────
 int WINAPI wWinMain(
     _In_ HINSTANCE     /*hInstance*/,
@@ -252,13 +261,55 @@ int WINAPI wWinMain(
 {
     std::wstring args(lpCmdLine);
 
-    // Case-insensitive check for /uninstall
-    if (args.find(L"/uninstall") != std::wstring::npos ||
-        args.find(L"/UNINSTALL") != std::wstring::npos ||
-        args.find(L"/Uninstall") != std::wstring::npos)
-    {
+    bool quiet = ContainsCI(args, L"/quiet") || ContainsCI(args, L"/silent");
+
+    // Uninstall — always silent
+    if (ContainsCI(args, L"/uninstall"))
         return Uninstall();
+
+    // Interactive install: confirm before proceeding
+    if (!quiet)
+    {
+        int choice = MessageBoxW(
+            nullptr,
+            L"SharePoint Sync Speedup\n\n"
+            L"This will install a logon script that eliminates the ~8-hour\n"
+            L"delay for OneDrive SharePoint library sync.\n\n"
+            L"A scheduled task will run automatically at every login.\n\n"
+            L"Install now?",
+            L"SharePoint Sync Speedup — Install",
+            MB_OKCANCEL | MB_ICONINFORMATION);
+
+        if (choice != IDOK)
+            return 1;  // User cancelled
     }
 
-    return Install();
+    int result = Install();
+
+    if (!quiet)
+    {
+        if (result == 0)
+        {
+            MessageBoxW(
+                nullptr,
+                L"Installation complete.\n\n"
+                L"The SharePoint sync speedup script has been installed and\n"
+                L"will run automatically at every logon.\n\n"
+                L"You can uninstall from Settings > Apps > Apps & features.",
+                L"SharePoint Sync Speedup",
+                MB_OK | MB_ICONINFORMATION);
+        }
+        else
+        {
+            MessageBoxW(
+                nullptr,
+                L"Installation failed.\n\n"
+                L"The installer was unable to complete. Please try running\n"
+                L"the installer again or contact your IT administrator.",
+                L"SharePoint Sync Speedup — Error",
+                MB_OK | MB_ICONERROR);
+        }
+    }
+
+    return result;
 }
